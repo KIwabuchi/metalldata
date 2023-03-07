@@ -39,16 +39,6 @@ const std::string ST_METALL_LOCATION = "metall_location";
 const std::string ST_SELECTED        = "selected";
 const std::string SELECTOR           = "keys";
 
-template <class JsonObject>
-inline
-auto
-ifContains(const JsonObject& obj, const std::string& name) -> decltype(&obj.at(name))
-{
-  auto pos = obj.find(name);
-
-  return (pos == obj.end()) ? nullptr : &pos->value();
-}
-
 CXX_MAYBE_UNUSED
 json_logic::ValueExpr
 toValueExpr(const experimental::MetallJsonLines::value_type& el)
@@ -62,7 +52,7 @@ toValueExpr(const experimental::MetallJsonLines::value_type& el)
 
   const auto& str = el.as_string();
 
-  return json_logic::toValueExpr(boost::json::string(str.begin(), str.end()));
+  return json_logic::toValueExpr(boost::json::string(str.c_str(), str.length()));
 }
 
 template <class MetallJsonObjectT>
@@ -102,7 +92,7 @@ auto variableLookup(const MetallJsonObjectT& rowobj, std::string_view selectPref
              return toValueExpr(pos->value());
            }
 
-           if (col == "rowid") return json_logic::toValueExpr(rownum);
+           if (col == "rowid") return json_logic::toValueExpr(std::int64_t(rownum));
            if (col == "mpiid") return json_logic::toValueExpr(std::int64_t(rank));
 
            return evalPath(col, rowobj);
@@ -189,7 +179,7 @@ projector(ColumnSelector projlist)
   if (projlist.empty())
     return [](const xpr::MetallJsonLines::value_type& el) -> boost::json::value
            {
-             return metall::container::experimental::json::value_to<boost::json::value>(el);
+             return json::value_to<boost::json::value>(el);
            };
 
   return [fields = std::move(projlist)]
@@ -202,8 +192,9 @@ projector(ColumnSelector projlist)
 
            for (const std::string& col : fields)
            {
-             if (const auto* fld = ifContains(frobj, col))
-               res.emplace(col, metall::container::experimental::json::value_to<boost::json::value>(*fld));
+             auto fld = frobj.find(col);
+             if (fld != frobj.end())
+               res.emplace(col, json::value_to<boost::json::value>(fld->value()));
            }
 
            return res;
@@ -247,13 +238,13 @@ updater( std::size_t rank,
          {
            auto                  varLookup = variableLookup(rowval, selectPrefix, rownum, rank);
            json_logic::ValueExpr exp       = json_logic::calculate(*op, varLookup);
-           auto&                 rowobj    = rowval.as_object();
+           auto                  rowobj    = rowval.as_object();
            std::stringstream     jstr;
 
            jstr << exp;
 
            // return metall::container::experimental::json::value_from(*exp, objalloc);
-           rowobj[colName] = metall::container::experimental::json::parse(jstr.str(), objalloc);
+           rowobj[colName].parse(jstr.str());
          };
 }
 
