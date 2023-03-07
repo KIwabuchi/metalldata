@@ -163,7 +163,7 @@ endfunction()
 #
 function(setup_metall_target exe_name)
     target_include_directories(${exe_name} PRIVATE ${Boost_INCLUDE_DIRS})
-    target_include_directories(${exe_name} PRIVATE ${JSON_BENTO_ROOT}/include)
+    target_include_directories(${exe_name} PRIVATE ${JSON_BENTO_ROOT})
     target_link_libraries(${exe_name} PRIVATE Threads::Threads)
     target_link_libraries(${exe_name} PRIVATE Metall)
 
