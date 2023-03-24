@@ -8,6 +8,7 @@
 #include <metall/utility/metall_mpi_adaptor.hpp>
 #include <metall/container/vector.hpp>
 #include <metall/container/experimental/json/json.hpp>
+#include <json_bento/json_bento.hpp>
 
 #include <ygm/comm.hpp>
 #include <ygm/io/csv_parser.hpp>
@@ -19,8 +20,8 @@ namespace msg
 
 struct ProcessData
 {
-  using value_type       = metall::container::experimental::json::value<metall::manager::allocator_type<std::byte>>;
-  using lines_type       = metall::container::vector<value_type, metall::manager::scoped_allocator_type<value_type>>;
+  using lines_type       = json::json_bento<metall::manager::allocator_type<std::byte>>;
+  using value_type       = lines_type::value_accessor;
   using projector_type   = std::function<boost::json::value(const value_type&)>;
 
   lines_type*               vector;
@@ -99,11 +100,10 @@ namespace
 template <class Fn, class Vector>
 void _simpleForAllSelected(Fn fn, Vector& vector, std::size_t maxrows)
 {
-  auto        pos = vector.begin();
-  auto const  lim = pos+std::min(vector.size(), maxrows);
-  std::size_t i   = 0;
-
-  for (; pos != lim; ++pos, ++i) fn(i, *pos);
+  for (std::size_t i = 0; i < std::min(vector.size(), maxrows); ++i) {
+    auto val_accessor = vector[i];
+    fn(i, val_accessor);
+  }
 }
 
 // can be invoked with const and non-const arguments
@@ -120,11 +120,9 @@ void _forAllSelected( Fn fn,
   if (filterfn.empty())
     return _simpleForAllSelected<Fn>(std::move(fn), vector, maxrows);
 
-  auto        pos = vector.begin();
-  auto const  lim = vector.end();
   std::size_t i = 0;
 
-  while (maxrows && (lim != pos))
+  while (maxrows && (i < vector.size()))
   {
     try
     {
@@ -132,21 +130,23 @@ void _forAllSelected( Fn fn,
       auto const fillim = filterfn.end();
 
       filpos = std::find_if_not( filpos, fillim,
-                                 [i, pos](typename FilterFns::value_type const& filter) -> bool
+                                 [i, &vector](typename FilterFns::value_type const& filter) -> bool
                                  {
-                                   return filter(i, *pos);
+                                   auto val_accessor = vector[i];
+                                   return filter(i, val_accessor);
                                  }
                                );
 
       if (fillim == filpos)
       {
-        fn(i, *pos);
+        auto val_accessor = vector[i];
+        fn(i, val_accessor);
         --maxrows;
       }
     }
     catch (...) { /* \todo filter functions must not throw */ }
 
-    ++pos; ++i;
+    ++i;
   }
 }
 
@@ -169,8 +169,8 @@ T& checked_deref(T* ptr, const char* errmsg)
 
 struct MetallJsonLines
 {
-    using value_type            = metall::container::experimental::json::value<metall::manager::allocator_type<std::byte>>;
-    using lines_type            = metall::container::vector<value_type, metall::manager::scoped_allocator_type<value_type>>;
+    using lines_type            = json::json_bento<metall::manager::allocator_type<std::byte>>;
+    using value_type            = lines_type::value_accessor;
     using metall_allocator_type = decltype(std::declval<metall::utility::metall_mpi_adaptor>().get_local_manager().get_allocator());
     using filter_type           = std::function<bool(std::size_t, const value_type&)>;
     using updater_type          = std::function<void(std::size_t, value_type&)>;
@@ -368,7 +368,7 @@ struct MetallJsonLines
       lineParser.for_all( [&imported, vec, alloc]
                           (const std::string& line) -> void
                           {
-                            vec->emplace_back(mtljsn::parse(line, alloc));
+                            vec->push_back(mtljsn::parse(line, alloc));
                             ++imported;
                           }
                         );
@@ -422,13 +422,14 @@ struct MetallJsonLines
 
     /// returns the local element at index \ref idx
     /// \{
-    value_type&       at(std::size_t idx)       { return vector.at(idx); }
-    value_type const& at(std::size_t idx) const { return vector.at(idx); }
+    value_type       at(std::size_t idx)       { return vector.at(idx); }
+    value_type const at(std::size_t idx) const { return vector.at(idx); }
     /// \}
 
     /// appends a single element to the local container
-    value_type& append_local()                  { vector.emplace_back(); return vector.back(); }
-    value_type& append_local(value_type&& val)  { vector.emplace_back(std::move(val)); return vector.back(); }
+    value_type append_local()                  { vector.push_back(); return vector.back(); }
+    value_type append_local(value_type val)  { vector.push_back(val); return vector.back(); }
+    value_type append_local(boost::json::value val)  { vector.push_back(val); return vector.back(); }
 
     //
     // others

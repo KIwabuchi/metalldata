@@ -72,7 +72,7 @@ if (NOT Metall_FOUND)
     set(JUST_INSTALL_METALL_HEADER TRUE)
     FetchContent_Declare(Metall
             GIT_REPOSITORY https://github.com/LLNL/metall.git
-            GIT_TAG master
+            GIT_TAG develop
             )
     FetchContent_MakeAvailable(Metall)
 endif ()
@@ -163,6 +163,7 @@ endfunction()
 #
 function(setup_metall_target exe_name)
     target_include_directories(${exe_name} PRIVATE ${Boost_INCLUDE_DIRS})
+    target_include_directories(${exe_name} PRIVATE ${JSON_BENTO_ROOT})
     target_link_libraries(${exe_name} PRIVATE Threads::Threads)
     target_link_libraries(${exe_name} PRIVATE Metall)
 

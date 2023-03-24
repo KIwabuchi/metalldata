@@ -39,15 +39,6 @@ const std::string ST_METALL_LOCATION = "metall_location";
 const std::string ST_SELECTED        = "selected";
 const std::string KEYS_SELECTOR      = "keys";
 
-template <class JsonObject>
-inline
-auto
-ifContains(const JsonObject& obj, const std::string& name) -> decltype(&obj.at(name))
-{
-  auto pos = obj.find(name);
-
-  return (pos == obj.end()) ? nullptr : &pos->value();
-}
 
 CXX_MAYBE_UNUSED
 json_logic::ValueExpr
@@ -60,7 +51,7 @@ toValueExpr(const experimental::MetallJsonLines::value_type& el)
 
   assert(el.is_string()); // \todo array
 
-  const auto& str = el.as_string();
+  const auto str = el.as_string();
 
   return json_logic::toValueExpr(boost::json::string(str.begin(), str.end()));
 }
@@ -71,7 +62,7 @@ json_logic::ValueExpr
 evalPath(std::string_view path, const MetallJsonObjectT& obj)
 {
   if (auto pos = obj.find(path); pos != obj.end())
-    return toValueExpr(pos->value());
+    return toValueExpr((*pos).value());
 
   std::size_t pos = path.find('.');
 
@@ -99,7 +90,7 @@ auto variableLookup(const MetallJsonObjectT& rowobj, std::string_view selectPref
            if (auto pos = rowobj.find(col); pos != rowobj.end())
            {
              CXX_LIKELY;
-             return toValueExpr(pos->value());
+             return toValueExpr((*pos).value());
            }
 
            if (col == "rowid") return json_logic::toValueExpr(rownum);
@@ -193,21 +184,22 @@ projector(ColumnSelector projlist)
   if (projlist.empty())
     return [](const xpr::MetallJsonLines::value_type& el) -> boost::json::value
            {
-             return metall::container::experimental::json::value_to<boost::json::value>(el);
+             return json::value_to<boost::json::value>(el);
            };
 
   return [fields = std::move(projlist)]
          (const xpr::MetallJsonLines::value_type& el) -> boost::json::value
          {
            assert (el.is_object());
-           const auto& frobj = el.as_object();
+           const auto frobj = el.as_object();
 
            boost::json::object res;
 
            for (const std::string& col : fields)
            {
-             if (const auto* fld = ifContains(frobj, col))
-               res.emplace(col, metall::container::experimental::json::value_to<boost::json::value>(*fld));
+             auto fld = frobj.find(col);
+             if (fld != frobj.end())
+               res.emplace(col, json::value_to<boost::json::value>((*fld).value()));
            }
 
            return res;
@@ -251,7 +243,7 @@ updater( std::size_t rank,
          {
            auto                  varLookup = variableLookup(rowval, selectPrefix, rownum, rank);
            json_logic::ValueExpr exp       = json_logic::calculate(*op, varLookup);
-           auto&                 rowobj    = rowval.as_object();
+           auto                  rowobj    = rowval.as_object();
            std::stringstream     jstr;
 
            jstr << exp;
