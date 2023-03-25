@@ -22,7 +22,7 @@ struct ProcessData
 {
   using lines_type       = json::json_bento<metall::manager::allocator_type<std::byte>>;
   using value_type       = lines_type::value_accessor;
-  using projector_type   = std::function<boost::json::value(const value_type&)>;
+  using projector_type   = std::function<boost::json::value(const value_type)>;
 
   lines_type*               vector;
   std::vector<std::string>* remoteRows;
@@ -172,10 +172,10 @@ struct MetallJsonLines
     using lines_type            = json::json_bento<metall::manager::allocator_type<std::byte>>;
     using value_type            = lines_type::value_accessor;
     using metall_allocator_type = decltype(std::declval<metall::utility::metall_mpi_adaptor>().get_local_manager().get_allocator());
-    using filter_type           = std::function<bool(std::size_t, const value_type&)>;
-    using updater_type          = std::function<void(std::size_t, value_type&)>;
-    using accessor_type         = std::function<void(std::size_t, const value_type&)>;
-    using metall_projector_type = std::function<boost::json::value(const value_type&)>;
+    using filter_type           = std::function<bool(std::size_t, const value_type)>;
+    using updater_type          = std::function<void(std::size_t, value_type)>;
+    using accessor_type         = std::function<void(std::size_t, const value_type)>;
+    using metall_projector_type = std::function<boost::json::value(const value_type)>;
     using metall_manager_type   = metall::utility::metall_mpi_adaptor;
     //~ using functor_type          = std::function<void(std::size_t, value_type&)>;
     //~ using const_functor_type    = std::function<void(std::size_t, const value_type&)>;
@@ -217,7 +217,7 @@ struct MetallJsonLines
 
       // phase 1: make all local selections
       {
-        forAllSelected( [&selectedRows](int rownum, const value_type&) -> void
+        forAllSelected( [&selectedRows](int rownum, const value_type) -> void
                         {
                           selectedRows.emplace_back(rownum);
                         },
@@ -269,7 +269,7 @@ struct MetallJsonLines
       if (filterfn.size())
       {
         selected = 0;
-        forAllSelected([&selected](std::size_t, const value_type&) -> void { ++selected; });
+        forAllSelected([&selected](std::size_t, const value_type) -> void { ++selected; });
       }
 
       return selected;
@@ -336,7 +336,7 @@ struct MetallJsonLines
 
       // phase 1: update records locally
       {
-        _forAllSelected( [&updcount, fn = std::move(updater)](int rownum, value_type& obj) -> void
+        _forAllSelected( [&updcount, fn = std::move(updater)](int rownum, value_type obj) -> void
                          {
                            ++updcount;
                            fn(rownum, obj);
