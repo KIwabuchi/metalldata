@@ -50,6 +50,11 @@ setup_metall_target(mg-count_lines)
 setup_ygm_target(mg-count_lines)
 setup_clippy_target(mg-count_lines)
 
+add_metalldata_executable(mg-kcore mg-kcore.cpp)
+setup_metall_target(mg-kcore)
+setup_ygm_target(mg-kcore)
+setup_clippy_target(mg-kcore)
+
 #~ add_metalldata_executable(mg-head mg-head.cpp)
 #~ setup_metall_target(mg-head)
 #~ setup_ygm_target(mg-head)

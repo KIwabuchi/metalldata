@@ -528,6 +528,70 @@ struct metall_graph
       return totalRoots;
     }
 
+    std::vector<std::size_t> kcore(std::vector<filter_type> nfilt,
+                                   std::vector<filter_type> efilt,
+                                   int max_kcore) {
+      //
+      // Allocate adjacency list
+      ygm::container::map<std::string, std::set<std::string>> adj_set(comm());
+      auto edgeAction =
+          [&adj_set, edgeSrcKeyTxt = edgeSrcKey(),
+           edgeTgtKeyTxt = edgeTgtKey()](
+              std::size_t pos,
+              const metall_json_lines::accessor_type &val) -> void {
+        const auto src = to_string(get_key(val, edgeTgtKeyTxt));
+        const auto dst = to_string(get_key(val, edgeSrcKeyTxt));
+        adj_set.async_visit(
+            src,
+            [](std::string key, std::set<std::string> &adj, std::string v) {
+              adj.insert(v);
+            },
+            dst);
+        adj_set.async_visit(
+            dst,
+            [](std::string key, std::set<std::string> &adj, std::string v) {
+              adj.insert(v);
+            },
+            src);
+      };
+      edgelst.filter(std::move(efilt)).for_all_selected(edgeAction);
+      comm().barrier();
+
+      std::vector<size_t> global_kcore_size;
+      size_t total_global_pruned = 0;
+      for (int kcore = 1; kcore <= max_kcore; ++kcore) {
+        size_t locally_pruned = 0;
+        while (true) {
+          locally_pruned = 0;
+          adj_set.for_all(
+              [kcore, &adj_set, &locally_pruned](const std::string &vert,
+                                                 std::set<std::string> &adj) {
+                if (adj.empty() || adj.size() >= kcore)
+                  return;
+                //
+                // Found vertex to prune, go tell all neighbors of my demise
+                for (const auto &neighbor : adj) {
+                  adj_set.async_visit(
+                      neighbor,
+                      [](const std::string &, std::set<std::string> &adj,
+                         const std::string &v) { adj.erase(v); },
+                      vert);
+                }
+                adj.clear();
+                ++locally_pruned;
+              });
+          comm().barrier();
+
+          const auto global_pruned = comm().all_reduce_sum(locally_pruned);
+          total_global_pruned += global_pruned;
+          if (global_pruned == 0)
+            break;
+        }
+        global_kcore_size.emplace_back(adj_set.size() - total_global_pruned);
+      }
+
+      return global_kcore_size;
+    }
 
     static
     void check_state( metall_manager_type& manager,
