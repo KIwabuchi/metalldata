@@ -55,6 +55,11 @@ setup_metall_target(mg-kcore)
 setup_ygm_target(mg-kcore)
 setup_clippy_target(mg-kcore)
 
+add_metalldata_executable(mg-bfs mg-bfs.cpp)
+setup_metall_target(mg-bfs)
+setup_ygm_target(mg-bfs)
+setup_clippy_target(mg-bfs)
+
 #~ add_metalldata_executable(mg-head mg-head.cpp)
 #~ setup_metall_target(mg-head)
 #~ setup_ygm_target(mg-head)

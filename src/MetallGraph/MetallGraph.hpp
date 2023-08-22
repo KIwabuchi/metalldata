@@ -2,8 +2,9 @@
 
 #include <boost/container/string.hpp>
 #include <boost/container/vector.hpp>
-#include <unordered_map>
-
+#include <map>
+#include <set>
+#include <vector>
 #include <ygm/container/map.hpp>
 #include <ygm/container/set.hpp>
 #include <ygm/detail/ygm_ptr.hpp>
@@ -101,12 +102,23 @@ struct conn_comp_mg {
 conn_comp_mg *conn_comp_mg::ptr = nullptr;
 
 struct kcore_comp_mg {
-  std::unordered_map<std::string, size_t> kcore_table;
+  // Use map here on purpose because
+  // many hash conflicts will happen if graph partitioning also uses the same
+  // hash function.
+  std::map<std::string, size_t> kcore_table;
 
   static kcore_comp_mg *ptr;
 };
 
 kcore_comp_mg *kcore_comp_mg::ptr = nullptr;
+
+struct bfs_comp_mg {
+  std::map<std::string, size_t> level_table;
+
+  static bfs_comp_mg *ptr;
+};
+
+bfs_comp_mg *bfs_comp_mg::ptr = nullptr;
 } // namespace
 
 namespace experimental {
@@ -600,6 +612,99 @@ struct metall_graph {
     comm().barrier();
 
     return kcore_size_list;
+  }
+
+  size_t bfs(std::vector<filter_type> nfilt, std::vector<filter_type> efilt,
+             std::string root, bool undirected = true) {
+    msg::ptr_guard cntStateGuard{bfs_comp_mg::ptr, new bfs_comp_mg{}};
+
+    //
+    // Allocate adjacency list
+    ygm::container::map<std::string, std::vector<std::string>> adj_list(comm());
+    auto edgeAction = [&adj_list, undirected, edgeSrcKeyTxt = edgeSrcKey(),
+                       edgeTgtKeyTxt = edgeTgtKey()](
+                          std::size_t pos,
+                          const metall_json_lines::accessor_type &val) -> void {
+      const auto src = to_string(get_key(val, edgeTgtKeyTxt));
+      const auto dst = to_string(get_key(val, edgeSrcKeyTxt));
+      adj_list.async_visit(
+          src,
+          [](std::string key, std::vector<std::string> &adj, std::string v) {
+            adj.push_back(v);
+            bfs_comp_mg::ptr->level_table[key] = -1;
+          },
+          dst);
+
+      if (!undirected)
+        return;
+
+      adj_list.async_visit(
+          dst,
+          [](std::string key, std::vector<std::string> &adj, std::string v) {
+            adj.push_back(v);
+            bfs_comp_mg::ptr->level_table[key] = -1;
+          },
+          src);
+    };
+    edgelst.filter(std::move(efilt)).for_all_selected(edgeAction);
+    comm().barrier();
+
+    if (adj_list.is_mine(root)) {
+      bfs_comp_mg::ptr->level_table[root] = 0;
+    }
+    comm().cf_barrier();
+
+    size_t local_total_visited = 0;
+    for (size_t level = 0;; ++level) {
+      size_t count = 0;
+      adj_list.for_all([level, &count,
+                        &adj_list](const std::string &v,
+                                   std::vector<std::string> &adj) {
+        auto &current_lv = bfs_comp_mg::ptr->level_table.at(v);
+        if (level != current_lv)
+          return;
+        ++count;
+
+        for (const auto &n : adj) {
+          adj_list.async_visit(
+              n,
+              [](std::string v, std::vector<std::string> &adj, size_t level) {
+                auto &current_lv = bfs_comp_mg::ptr->level_table.at(v);
+                if (current_lv == -1) {
+                  current_lv = level + 1;
+                }
+              },
+              level);
+        }
+      });
+      comm().barrier();
+      local_total_visited += count;
+      if (comm().all_reduce_sum(count) == 0)
+        break;
+    }
+
+    auto level_setter = [&adj_list, nodeKeyTxt = nodeKey(),
+                         this](const std::size_t index,
+                               const metall_json_lines::accessor_type &val) {
+      const std::string v = to_string(get_key(val, nodeKeyTxt));
+      comm().async(
+          adj_list.owner(v),
+          [](auto pcomm, const std::string &v, const int index,
+             ygm::ygm_ptr<metall_graph> pthis, const int src_rank) {
+            pcomm->async(
+                src_rank,
+                [](auto, const size_t level, const int index,
+                   ygm::ygm_ptr<metall_graph> pthis) {
+                  pthis->nodelst.at(index).as_object()["bfs-level"] = level;
+                },
+                bfs_comp_mg::ptr->level_table.at(v), index, pthis);
+          },
+          v, index, ptr_this, comm().rank());
+    };
+    nodelst.for_all_selected(level_setter);
+    comm().barrier();
+
+    return comm().all_reduce_sum(local_total_visited);
   }
 
   void dump(const std::string_view &prefix_path) {
