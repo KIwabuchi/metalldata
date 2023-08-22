@@ -12,7 +12,7 @@ namespace xpr = experimental;
 namespace {
 const std::string METHOD_NAME = "kcore";
 const std::string METHOD_DOCSTRING = "K core..";
-const std::string K_ARG = "k";
+const std::string MAX_K_ARG = "k";
 } // namespace
 
 std::size_t countLines(bool skip, bool ignoreFilter,
@@ -33,7 +33,7 @@ int ygm_main(ygm::comm &world, int argc, char **argv) {
   clip.member_of(MG_CLASS_NAME, "A " + MG_CLASS_NAME + " class");
   clip.add_required_state<std::string>(ST_METALL_LOCATION,
                                        "Metall storage location");
-  clip.add_required<unsigned int>(K_ARG, "k");
+  clip.add_required<unsigned int>(MAX_K_ARG, "Max k-core value to compute");
 
   if (clip.parse(argc, argv, world)) {
     return 0;
@@ -44,12 +44,11 @@ int ygm_main(ygm::comm &world, int argc, char **argv) {
 
     const std::string dataLocation =
         clip.get_state<std::string>(ST_METALL_LOCATION);
-    const unsigned int k = clip.get<unsigned int>(K_ARG);
-    metall_manager mm{metall::open_read_only, dataLocation.data(),
-                      MPI_COMM_WORLD};
+    const unsigned int max_k = clip.get<unsigned int>(MAX_K_ARG);
+    metall_manager mm{metall::open_only, dataLocation.data(), MPI_COMM_WORLD};
     xpr::metall_graph g{mm, world};
     const auto res = g.kcore(filter(world.rank(), clip, NODES_SELECTOR),
-                             filter(world.rank(), clip, EDGES_SELECTOR), k);
+                             filter(world.rank(), clip, EDGES_SELECTOR), max_k);
 
     if (world.rank() == 0) {
       clip.to_return(res);
