@@ -17,7 +17,8 @@ using distributed_string_set = ygm::container::set<std::string>;
 using distributed_adj_list =
     ygm::container::map<std::string, std::vector<std::string>>;
 
-template <class T> struct ptr_guard {
+template <class T>
+struct ptr_guard {
   ptr_guard(T *&pref, T *obj) : ptr(&pref) {
     assert(pref == nullptr);
 
@@ -29,17 +30,18 @@ template <class T> struct ptr_guard {
     *ptr = nullptr;
   }
 
-private:
+ private:
   T **ptr;
 
-  ptr_guard() = delete;
-  ptr_guard(ptr_guard &&) = delete;
-  ptr_guard(const ptr_guard &) = delete;
-  ptr_guard &operator=(ptr_guard &&) = delete;
+  ptr_guard()                             = delete;
+  ptr_guard(ptr_guard &&)                 = delete;
+  ptr_guard(const ptr_guard &)            = delete;
+  ptr_guard &operator=(ptr_guard &&)      = delete;
   ptr_guard &operator=(const ptr_guard &) = delete;
 };
 
-template <class T> ptr_guard(T *&, T *) -> ptr_guard<T>;
+template <class T>
+ptr_guard(T *&, T *) -> ptr_guard<T>;
 
 #if NOT_YET_AND_MAYBE_NEVER_WILL
 struct ProcessDataMG {
@@ -52,9 +54,9 @@ void commEdgeSrcCheck(std::string src, std::string tgt, std::size_t idx) {
   assert(msg::mgState.get());
 
   distributed_string_set &keyset = msg::mgState->distributedKeys;
-  ygm::comm &w = keyset.comm();
-  const int self = w.rank();
-  const int dest = keyset.owner(src);
+  ygm::comm              &w      = keyset.comm();
+  const int               self   = w.rank();
+  const int               dest   = keyset.owner(src);
 
   if (self == dest) {
     if (keyset.count_local())
@@ -75,7 +77,7 @@ struct metall_graphKeys
 };
 
 #endif /* NOT_YET_AND_MAYBE_NEVER_WILL */
-} // namespace msg
+}  // namespace msg
 
 namespace {
 struct count_data_mg {
@@ -83,8 +85,8 @@ struct count_data_mg {
       : distributedKeys(comm), edgecnt(0), nodecnt(0) {}
 
   msg::distributed_string_set distributedKeys;
-  std::size_t edgecnt;
-  std::size_t nodecnt;
+  std::size_t                 edgecnt;
+  std::size_t                 nodecnt;
 
   static count_data_mg *ptr;
 };
@@ -119,7 +121,7 @@ struct bfs_comp_mg {
 };
 
 bfs_comp_mg *bfs_comp_mg::ptr = nullptr;
-} // namespace
+}  // namespace
 
 namespace experimental {
 
@@ -128,7 +130,7 @@ using metall_string =
                                    metall::manager::allocator_type<char>>;
 
 metall_json_lines::accessor_type get_key(metall_json_lines::accessor_type val,
-                                         std::string_view key) {
+                                         std::string_view                 key) {
   assert(val.is_object());
   return val.as_object()[key];
 }
@@ -144,12 +146,12 @@ std::string to_string(const metall_json_lines::accessor_type &valacc) {
   return to_string(json_bento::value_to<boost::json::value>(valacc));
 }
 
-std::function<bool(const boost::json::value &)>
-gen_keys_checker(std::vector<std::string_view> keys) {
+std::function<bool(const boost::json::value &)> gen_keys_checker(
+    std::vector<std::string_view> keys) {
   return [fields = std::move(keys)](const boost::json::value &val) -> bool {
     try {
-      bool incl = true;
-      const auto &obj = val.as_object();
+      bool        incl = true;
+      const auto &obj  = val.as_object();
 
       for (std::string_view fld : fields) {
         boost::json::string_view fldvw(&*fld.begin(), fld.size());
@@ -164,21 +166,21 @@ gen_keys_checker(std::vector<std::string_view> keys) {
   };
 }
 
-std::function<boost::json::value(boost::json::value)>
-gen_keys_generator(std::vector<std::string_view> edgeKeyFields,
-                   std::vector<std::string_view> edgeKeysOrigin) {
+std::function<boost::json::value(boost::json::value)> gen_keys_generator(
+    std::vector<std::string_view> edgeKeyFields,
+    std::vector<std::string_view> edgeKeysOrigin) {
   const int numKeys = std::min(edgeKeyFields.size(), edgeKeysOrigin.size());
 
-  return [edgeKeys = std::move(edgeKeyFields),
+  return [edgeKeys  = std::move(edgeKeyFields),
           keyOrigin = std::move(edgeKeysOrigin),
           numKeys](boost::json::value val) -> boost::json::value {
     auto &obj = val.as_object();
 
     for (int i = 0; i < numKeys; ++i) {
       try {
-        std::string_view key = keyOrigin[i];
+        std::string_view         key = keyOrigin[i];
         boost::json::string_view keyVw(&*key.begin(), key.size());
-        std::string keyval = to_string(obj[keyVw]);
+        std::string              keyval = to_string(obj[keyVw]);
 
         keyval.push_back('@');
         keyval.append(key);
@@ -218,7 +220,7 @@ void persist_keys(metall_json_lines &lines, std::string_view key,
                   msg::distributed_string_set &keyValues) {
   keyValues.local_for_all([&lines, key](const std::string &keyval) -> void {
     metall_json_lines::accessor_type val = lines.append_local();
-    auto obj = val.emplace_object();
+    auto                             obj = val.emplace_object();
 
     obj[key] = keyval;
   });
@@ -231,7 +233,7 @@ struct metall_graph {
       boost::container::vector<metall_string,
                                metall::manager::allocator_type<metall_string>>;
   using metall_manager_type = metall_json_lines::metall_manager_type;
-  using filter_type = metall_json_lines::filter_type;
+  using filter_type         = metall_json_lines::filter_type;
 
   metall_graph(metall_manager_type &manager, ygm::comm &comm)
       : edgelst(manager, comm, edge_location_suffix),
@@ -242,10 +244,10 @@ struct metall_graph {
     checked_deref(keys, ERR_OPEN_KEYS);
   }
 
-  edge_list_type &edges() { return edgelst; }
+  edge_list_type       &edges() { return edgelst; }
   edge_list_type const &edges() const { return edgelst; }
 
-  node_list_type &nodes() { return nodelst; }
+  node_list_type       &nodes() { return nodelst; }
   node_list_type const &nodes() const { return nodelst; }
 
   std::string_view nodeKey() const { return keys->at(NODE_KEY_IDX); }
@@ -283,7 +285,7 @@ struct metall_graph {
     metall_json_lines::create_new(
         manager, comm, {edge_location_suffix_v, node_location_suffix_v});
 
-    auto &mgr = manager.get_local_manager();
+    auto           &mgr = manager.get_local_manager();
     key_store_type &vec =
         checked_deref(mgr.construct<key_store_type>(keys_location_suffix)(
                           mgr.get_allocator()),
@@ -330,7 +332,7 @@ struct metall_graph {
 
     msg::ptr_guard cntStateGuard{count_data_mg::ptr,
                                  new count_data_mg{nodelst.comm()}};
-    int rank = comm().rank();
+    int            rank = comm().rank();
 
     auto nodeAction = [nodeKeyTxt = nodeKey(), rank](
                           std::size_t,
@@ -356,7 +358,7 @@ struct metall_graph {
     //   inclusion.
     auto edgeAction = [edgeSrcKeyTxt = edgeSrcKey(),
                        edgeTgtKeyTxt = edgeTgtKey()](
-                          std::size_t pos,
+                          std::size_t                             pos,
                           const metall_json_lines::accessor_type &val) -> void {
       msg::distributed_string_set &keyStore =
           count_data_mg::ptr->distributedKeys;
@@ -406,7 +408,7 @@ struct metall_graph {
 
     auto edgeAction = [edgeSrcKeyTxt = edgeSrcKey(),
                        edgeTgtKeyTxt = edgeTgtKey()](
-                          std::size_t pos,
+                          std::size_t                             pos,
                           const metall_json_lines::accessor_type &val) -> void {
       msg::distributed_adj_list &adjList =
           conn_comp_mg::ptr->distributedAdjList;
@@ -447,8 +449,8 @@ struct metall_graph {
 
       // \todo could be factored into a class similar to conn_comp_mg
       static auto &s_next_active = next_active;
-      static auto &s_map_cc = map_cc;
-      static auto &s_adj_list = conn_comp_mg::ptr->distributedAdjList;
+      static auto &s_map_cc      = map_cc;
+      static auto &s_adj_list    = conn_comp_mg::ptr->distributedAdjList;
 
       //
       // Init map_cc
@@ -515,7 +517,7 @@ struct metall_graph {
 
   std::vector<std::size_t> kcore(std::vector<filter_type> nfilt,
                                  std::vector<filter_type> efilt,
-                                 int max_kcore) {
+                                 int                      max_kcore) {
     msg::ptr_guard cntStateGuard{kcore_comp_mg::ptr, new kcore_comp_mg{}};
 
     //
@@ -523,7 +525,7 @@ struct metall_graph {
     ygm::container::map<std::string, std::set<std::string>> adj_set(comm());
     auto edgeAction = [&adj_set, edgeSrcKeyTxt = edgeSrcKey(),
                        edgeTgtKeyTxt = edgeTgtKey()](
-                          std::size_t pos,
+                          std::size_t                             pos,
                           const metall_json_lines::accessor_type &val) -> void {
       const auto src = to_string(get_key(val, edgeTgtKeyTxt));
       const auto dst = to_string(get_key(val, edgeSrcKeyTxt));
@@ -553,10 +555,9 @@ struct metall_graph {
       while (true) {
         size_t locally_pruned = 0;
         adj_set.for_all(
-            [kcore, &adj_set, &locally_pruned, &kcore_table,
-             this](const std::string &vert, std::set<std::string> &adj) {
-              if (adj.empty() || adj.size() >= kcore)
-                return;
+            [kcore, &adj_set, &locally_pruned, &kcore_table, this](
+                const std::string &vert, std::set<std::string> &adj) {
+              if (adj.empty() || adj.size() >= kcore) return;
 
               // Found vertex to prune, go tell all neighbors of my demise
               for (const auto &neighbor : adj) {
@@ -574,8 +575,7 @@ struct metall_graph {
 
         const auto global_pruned = comm().all_reduce_sum(locally_pruned);
         global_total_pruned += global_pruned;
-        if (global_pruned == 0)
-          break;
+        if (global_pruned == 0) break;
       }
       kcore_size_list.emplace_back(global_total_pruned);
     }
@@ -586,9 +586,9 @@ struct metall_graph {
     kcore_size_list.emplace_back(adj_set.size() - total);
 
     // Insert k-core values to the corresponding nodes' JSON data
-    auto kcore_setter = [&adj_set, nodeKeyTxt = nodeKey(),
-                         this](const std::size_t index,
-                               const metall_json_lines::accessor_type &val) {
+    auto kcore_setter = [&adj_set, nodeKeyTxt = nodeKey(), this](
+                            const std::size_t                       index,
+                            const metall_json_lines::accessor_type &val) {
       assert(kcore_comp_mg::ptr != nullptr);
       const std::string v = to_string(get_key(val, nodeKeyTxt));
       comm().async(
@@ -596,8 +596,7 @@ struct metall_graph {
           [](auto pcomm, const std::string &v, const int index,
              ygm::ygm_ptr<metall_graph> pthis, const int src_rank) {
             auto &kcore_table = kcore_comp_mg::ptr->kcore_table;
-            if (kcore_table.count(v) == 0)
-              return;
+            if (kcore_table.count(v) == 0) return;
             pcomm->async(
                 src_rank,
                 [](auto, const int kcore, const int index,
@@ -623,7 +622,7 @@ struct metall_graph {
     ygm::container::map<std::string, std::vector<std::string>> adj_list(comm());
     auto edgeAction = [&adj_list, undirected, edgeSrcKeyTxt = edgeSrcKey(),
                        edgeTgtKeyTxt = edgeTgtKey()](
-                          std::size_t pos,
+                          std::size_t                             pos,
                           const metall_json_lines::accessor_type &val) -> void {
       const auto src = to_string(get_key(val, edgeTgtKeyTxt));
       const auto dst = to_string(get_key(val, edgeSrcKeyTxt));
@@ -635,8 +634,7 @@ struct metall_graph {
           },
           dst);
 
-      if (!undirected)
-        return;
+      if (!undirected) return;
 
       adj_list.async_visit(
           dst,
@@ -657,12 +655,11 @@ struct metall_graph {
     size_t local_total_visited = 0;
     for (size_t level = 0;; ++level) {
       size_t count = 0;
-      adj_list.for_all([level, &count,
-                        &adj_list](const std::string &v,
-                                   std::vector<std::string> &adj) {
+      adj_list.for_all([level, &count, &adj_list](
+                           const std::string        &v,
+                           std::vector<std::string> &adj) {
         auto &current_lv = bfs_comp_mg::ptr->level_table.at(v);
-        if (level != current_lv)
-          return;
+        if (level != current_lv) return;
         ++count;
 
         for (const auto &n : adj) {
@@ -679,13 +676,12 @@ struct metall_graph {
       });
       comm().barrier();
       local_total_visited += count;
-      if (comm().all_reduce_sum(count) == 0)
-        break;
+      if (comm().all_reduce_sum(count) == 0) break;
     }
 
-    auto level_setter = [&adj_list, nodeKeyTxt = nodeKey(),
-                         this](const std::size_t index,
-                               const metall_json_lines::accessor_type &val) {
+    auto level_setter = [&adj_list, nodeKeyTxt = nodeKey(), this](
+                            const std::size_t                       index,
+                            const metall_json_lines::accessor_type &val) {
       const std::string v = to_string(get_key(val, nodeKeyTxt));
       comm().async(
           adj_list.owner(v),
@@ -741,17 +737,16 @@ struct metall_graph {
     key_store_type &vec = checked_deref(
         mgr.find<key_store_type>(keys_location_suffix).first, ERR_OPEN_KEYS);
 
-    if (vec.size() != 3)
-      throw std::runtime_error{ERR_OPEN_KEYS};
+    if (vec.size() != 3) throw std::runtime_error{ERR_OPEN_KEYS};
     //~ if (node_key.size())     check_equality(node_key, nodeKey());
     //~ if (edge_src_key.size()) check_equality(edge_src_key, edgeSrcKey());
     //~ if (edge_tgt_key.size()) check_equality(edge_tgt_key, edgeTgtKey());
   }
 
-private:
-  edge_list_type edgelst;
-  node_list_type nodelst;
-  key_store_type *keys = nullptr;
+ private:
+  edge_list_type             edgelst;
+  node_list_type             nodelst;
+  key_store_type            *keys = nullptr;
   ygm::ygm_ptr<metall_graph> ptr_this{this};
 
   static constexpr const char *const edge_location_suffix = "edges";
@@ -763,9 +758,9 @@ private:
   static constexpr const char *const ERR_OPEN_KEYS =
       "unable to open metall_graph::keys object";
 
-  static constexpr std::size_t NODE_KEY_IDX = 0;
+  static constexpr std::size_t NODE_KEY_IDX    = 0;
   static constexpr std::size_t EDGE_SRCKEY_IDX = NODE_KEY_IDX + 1;
   static constexpr std::size_t EDGE_TGTKEY_IDX = EDGE_SRCKEY_IDX + 1;
 };
 
-} // namespace experimental
+}  // namespace experimental
