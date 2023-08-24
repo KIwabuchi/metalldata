@@ -1,6 +1,7 @@
 #pragma once
 
 #include <boost/container/string.hpp>
+#include <boost/container/string.hpp>
 #include <boost/container/vector.hpp>
 #include <map>
 #include <set>
@@ -11,6 +12,7 @@
 
 #include "MetallJsonLines.hpp"
 
+namespace msg {
 namespace msg {
 
 using distributed_string_set = ygm::container::set<std::string>;
@@ -24,7 +26,13 @@ struct ptr_guard {
 
     pref = obj;
   }
+    pref = obj;
+  }
 
+  ~ptr_guard() {
+    delete *ptr;
+    *ptr = nullptr;
+  }
   ~ptr_guard() {
     delete *ptr;
     *ptr = nullptr;
@@ -45,11 +53,13 @@ ptr_guard(T *&, T *) -> ptr_guard<T>;
 
 #if NOT_YET_AND_MAYBE_NEVER_WILL
 struct ProcessDataMG {
+struct ProcessDataMG {
   distributed_string_set distributedKeys;
 };
 
 std::unique_ptr<ProcessDataMG> mgState;
 
+void commEdgeSrcCheck(std::string src, std::string tgt, std::size_t idx) {
 void commEdgeSrcCheck(std::string src, std::string tgt, std::size_t idx) {
   assert(msg::mgState.get());
 
@@ -59,8 +69,10 @@ void commEdgeSrcCheck(std::string src, std::string tgt, std::size_t idx) {
   const int               dest   = keyset.owner(src);
 
   if (self == dest) {
+  if (self == dest) {
     if (keyset.count_local())
       commEdgeTgtCheck(std::string tgt, std::size_t idx);
+  } else {
   } else {
     w.async();
   }
@@ -68,9 +80,12 @@ void commEdgeSrcCheck(std::string src, std::string tgt, std::size_t idx) {
 
 struct metall_graphKeys
     : std::tuple<metall_string, metall_string, metall_string> {
+struct metall_graphKeys
+    : std::tuple<metall_string, metall_string, metall_string> {
   using base = std::tuple<std::string, std::string, std::string>;
   using base::base;
 
+  std::string_view nodes_key() const { return std::get<0>(*this); }
   std::string_view nodes_key() const { return std::get<0>(*this); }
   std::string_view edges_source_key() const { return std::get<1>(*this); }
   std::string_view edges_target_key() const { return std::get<2>(*this); }
@@ -78,12 +93,16 @@ struct metall_graphKeys
 
 #endif /* NOT_YET_AND_MAYBE_NEVER_WILL */
 }  // namespace msg
+}  // namespace msg
 
 namespace {
 struct count_data_mg {
   explicit count_data_mg(ygm::comm &comm)
       : distributedKeys(comm), edgecnt(0), nodecnt(0) {}
 
+  msg::distributed_string_set distributedKeys;
+  std::size_t                 edgecnt;
+  std::size_t                 nodecnt;
   msg::distributed_string_set distributedKeys;
   std::size_t                 edgecnt;
   std::size_t                 nodecnt;
@@ -96,6 +115,7 @@ count_data_mg *count_data_mg::ptr = nullptr;
 struct conn_comp_mg {
   explicit conn_comp_mg(ygm::comm &comm) : distributedAdjList(comm) {}
 
+  msg::distributed_adj_list distributedAdjList;
   msg::distributed_adj_list distributedAdjList;
 
   static conn_comp_mg *ptr;
@@ -155,7 +175,11 @@ std::function<bool(const boost::json::value &)> gen_keys_checker(
 
       for (std::string_view fld : fields) {
         boost::json::string_view fldvw(&*fld.begin(), fld.size());
+      for (std::string_view fld : fields) {
+        boost::json::string_view fldvw(&*fld.begin(), fld.size());
 
+        incl = incl && obj.contains(fldvw);
+      }
         incl = incl && obj.contains(fldvw);
       }
 
@@ -164,8 +188,16 @@ std::function<bool(const boost::json::value &)> gen_keys_checker(
       return false;
     }
   };
+      return incl;
+    } catch (...) {
+      return false;
+    }
+  };
 }
 
+std::function<boost::json::value(boost::json::value)> gen_keys_generator(
+    std::vector<std::string_view> edgeKeyFields,
+    std::vector<std::string_view> edgeKeysOrigin) {
 std::function<boost::json::value(boost::json::value)> gen_keys_generator(
     std::vector<std::string_view> edgeKeyFields,
     std::vector<std::string_view> edgeKeysOrigin) {
@@ -181,15 +213,29 @@ std::function<boost::json::value(boost::json::value)> gen_keys_generator(
         std::string_view         key = keyOrigin[i];
         boost::json::string_view keyVw(&*key.begin(), key.size());
         std::string              keyval = to_string(obj[keyVw]);
+    for (int i = 0; i < numKeys; ++i) {
+      try {
+        std::string_view         key = keyOrigin[i];
+        boost::json::string_view keyVw(&*key.begin(), key.size());
+        std::string              keyval = to_string(obj[keyVw]);
 
+        keyval.push_back('@');
+        keyval.append(key);
         keyval.push_back('@');
         keyval.append(key);
 
         boost::json::string_view edgeKeyVw(&*edgeKeys[i].begin(),
                                            edgeKeys[i].size());
+        boost::json::string_view edgeKeyVw(&*edgeKeys[i].begin(),
+                                           edgeKeys[i].size());
 
         obj[edgeKeyVw] = keyval;
+        obj[edgeKeyVw] = keyval;
 
+        count_data_mg::ptr->distributedKeys.async_insert(keyval);
+      } catch (...) {
+      }
+    }
         count_data_mg::ptr->distributedKeys.async_insert(keyval);
       } catch (...) {
       }
@@ -197,8 +243,11 @@ std::function<boost::json::value(boost::json::value)> gen_keys_generator(
 
     return val;
   };
+    return val;
+  };
 }
 
+struct mg_count_summary : std::tuple<std::size_t, std::size_t> {
 struct mg_count_summary : std::tuple<std::size_t, std::size_t> {
   using base = std::tuple<std::size_t, std::size_t>;
   using base::base;
@@ -206,6 +255,7 @@ struct mg_count_summary : std::tuple<std::size_t, std::size_t> {
   std::size_t nodes() const { return std::get<0>(*this); }
   std::size_t edges() const { return std::get<1>(*this); }
 
+  boost::json::object asJson() const {
   boost::json::object asJson() const {
     boost::json::object res;
 
@@ -222,6 +272,8 @@ void persist_keys(metall_json_lines &lines, std::string_view key,
     metall_json_lines::accessor_type val = lines.append_local();
     auto                             obj = val.emplace_object();
 
+    obj[key] = keyval;
+  });
     obj[key] = keyval;
   });
 }
@@ -253,6 +305,9 @@ struct metall_graph {
   std::string_view nodeKey() const { return keys->at(NODE_KEY_IDX); }
   std::string_view edgeSrcKey() const { return keys->at(EDGE_SRCKEY_IDX); }
   std::string_view edgeTgtKey() const { return keys->at(EDGE_TGTKEY_IDX); }
+  std::string_view nodeKey() const { return keys->at(NODE_KEY_IDX); }
+  std::string_view edgeSrcKey() const { return keys->at(EDGE_SRCKEY_IDX); }
+  std::string_view edgeTgtKey() const { return keys->at(EDGE_TGTKEY_IDX); }
 
   import_summary read_vertex_files(const std::vector<std::string> &files) {
     return nodelst.read_json_files(files, gen_keys_checker({nodeKey()}));
@@ -269,7 +324,16 @@ struct metall_graph {
     import_summary res = edgelst.read_json_files(
         files, gen_keys_checker(autoKeys),
         gen_keys_generator({edgeSrcKey(), edgeTgtKey()}, autoKeys));
+    msg::ptr_guard cntStateGuard{count_data_mg::ptr,
+                                 new count_data_mg{nodelst.comm()}};
+    import_summary res = edgelst.read_json_files(
+        files, gen_keys_checker(autoKeys),
+        gen_keys_generator({edgeSrcKey(), edgeTgtKey()}, autoKeys));
 
+    comm().barrier();
+    persist_keys(nodelst, nodeKey(), count_data_mg::ptr->distributedKeys);
+    return res;
+  }
     comm().barrier();
     persist_keys(nodelst, nodeKey(), count_data_mg::ptr->distributedKeys);
     return res;
@@ -282,6 +346,8 @@ struct metall_graph {
     std::string_view edge_location_suffix_v{edge_location_suffix};
     std::string_view node_location_suffix_v{node_location_suffix};
 
+    metall_json_lines::create_new(
+        manager, comm, {edge_location_suffix_v, node_location_suffix_v});
     metall_json_lines::create_new(
         manager, comm, {edge_location_suffix_v, node_location_suffix_v});
 
@@ -304,9 +370,30 @@ struct metall_graph {
       {
         msg::distributed_string_set  selectedKeys{ nodes.comm() };
         std::size_t                edgeCount = 0;
+    vec.emplace_back(
+        metall_string(node_key.data(), node_key.size(), mgr.get_allocator()));
+    vec.emplace_back(metall_string(edge_src_key.data(), edge_src_key.size(),
+                                   mgr.get_allocator()));
+    vec.emplace_back(metall_string(edge_tgt_key.data(), edge_tgt_key.size(),
+                                   mgr.get_allocator()));
+  }
+  /*
+      std::tuple<std::size_t, std::size_t>
+      count0(std::vector<filter_type> nfilt, std::vector<filter_type> efilt)
+      {
+        msg::distributed_string_set  selectedKeys{ nodes.comm() };
+        std::size_t                edgeCount = 0;
 
         msg::mgState = msg::ProcessDataMG{&selectedKeys};
+        msg::mgState = msg::ProcessDataMG{&selectedKeys};
 
+        auto nodeAction = [&selectedKeys, nodeKeyTxt = nodeKey()]
+                          (std::size_t, const
+     xpr::metall_json_lines::value_type& val)->void
+                          {
+                            selectedKeys.async_insert(to_string(get_key(val,
+     nodeKeyTxt)));
+                          };
         auto nodeAction = [&selectedKeys, nodeKeyTxt = nodeKey()]
                           (std::size_t, const
      xpr::metall_json_lines::value_type& val)->void
@@ -325,11 +412,27 @@ struct metall_graph {
                           };
       }
   */
+        auto edgeAction = [&selectedKeys, edgeSrcKeyTxt = edgeSrcKey(),
+     edgeTgtKeyTxt = edgeTgtKey()] (std::size_t pos, const
+     xpr::metall_json_lines::value_type& val)->void
+                          {
+                            commEdgeSrcCheck( to_string(get_key(val,
+     edgeSrcKeyTxt)), to_string(get_key(val, edgeTgtKeyTxt)), pos
+                                            );
+                          };
+      }
+  */
 
   mg_count_summary count(std::vector<filter_type> nfilt,
                          std::vector<filter_type> efilt) {
     assert(count_data_mg::ptr == nullptr);
+  mg_count_summary count(std::vector<filter_type> nfilt,
+                         std::vector<filter_type> efilt) {
+    assert(count_data_mg::ptr == nullptr);
 
+    msg::ptr_guard cntStateGuard{count_data_mg::ptr,
+                                 new count_data_mg{nodelst.comm()}};
+    int            rank = comm().rank();
     msg::ptr_guard cntStateGuard{count_data_mg::ptr,
                                  new count_data_mg{nodelst.comm()}};
     int            rank = comm().rank();
@@ -344,10 +447,16 @@ struct metall_graph {
 
       std::string thekey = to_string(get_key(val, nodeKeyTxt));
       keyStore.async_insert(thekey);
+      std::string thekey = to_string(get_key(val, nodeKeyTxt));
+      keyStore.async_insert(thekey);
 
       ++count_data_mg::ptr->nodecnt;
     };
+      ++count_data_mg::ptr->nodecnt;
+    };
 
+    nodelst.filter(std::move(nfilt)).for_all_selected(nodeAction);
+    comm().barrier();
     nodelst.filter(std::move(nfilt)).for_all_selected(nodeAction);
     comm().barrier();
 
@@ -372,7 +481,13 @@ struct metall_graph {
 
         keyStore.async_exe_if_contains(tgtkey, commEdgeTgtCheck);
       };
+        keyStore.async_exe_if_contains(tgtkey, commEdgeTgtCheck);
+      };
 
+      keyStore.async_exe_if_contains(to_string(get_key(val, edgeSrcKeyTxt)),
+                                     commEdgeSrcCheck,
+                                     to_string(get_key(val, edgeTgtKeyTxt)));
+    };
       keyStore.async_exe_if_contains(to_string(get_key(val, edgeSrcKeyTxt)),
                                      commEdgeSrcCheck,
                                      to_string(get_key(val, edgeTgtKeyTxt)));
@@ -380,16 +495,26 @@ struct metall_graph {
 
     edgelst.filter(std::move(efilt)).for_all_selected(edgeAction);
     comm().barrier();
+    edgelst.filter(std::move(efilt)).for_all_selected(edgeAction);
+    comm().barrier();
 
+    const std::size_t totalNodes = count_data_mg::ptr->distributedKeys.size();
+    const std::size_t totalEdges =
+        nodelst.comm().all_reduce_sum(count_data_mg::ptr->edgecnt);
     const std::size_t totalNodes = count_data_mg::ptr->distributedKeys.size();
     const std::size_t totalEdges =
         nodelst.comm().all_reduce_sum(count_data_mg::ptr->edgecnt);
 
     return {totalNodes, totalEdges};
   }
+    return {totalNodes, totalEdges};
+  }
 
   ygm::comm &comm() { return nodelst.comm(); }
 
+  std::size_t connected_components(std::vector<filter_type> nfilt,
+                                   std::vector<filter_type> efilt) {
+    msg::ptr_guard cntStateGuard{conn_comp_mg::ptr, new conn_comp_mg{comm()}};
   std::size_t connected_components(std::vector<filter_type> nfilt,
                                    std::vector<filter_type> efilt) {
     msg::ptr_guard cntStateGuard{conn_comp_mg::ptr, new conn_comp_mg{comm()}};
@@ -402,7 +527,12 @@ struct metall_graph {
       conn_comp_mg::ptr->distributedAdjList.async_insert_if_missing(
           vertex, std::vector<std::string>{});
     };
+      conn_comp_mg::ptr->distributedAdjList.async_insert_if_missing(
+          vertex, std::vector<std::string>{});
+    };
 
+    nodelst.filter(std::move(nfilt)).for_all_selected(nodeAction);
+    comm().barrier();
     nodelst.filter(std::move(nfilt)).for_all_selected(nodeAction);
     comm().barrier();
 
@@ -425,7 +555,19 @@ struct metall_graph {
         conn_comp_mg::ptr->distributedAdjList.async_visit_if_exists(
             tgtkey, commEdgeSrcCheck, srckey);
       };
+        conn_comp_mg::ptr->distributedAdjList.async_visit_if_exists(
+            srckey, commEdgeSrcCheck, tgtkey);
+        conn_comp_mg::ptr->distributedAdjList.async_visit_if_exists(
+            tgtkey, commEdgeSrcCheck, srckey);
+      };
 
+      // check first target, if in then add edges (src->tgt and tgt->src) to
+      // adjecency list at src
+      //   we assume a
+      adjList.async_visit_if_exists(to_string(get_key(val, edgeTgtKeyTxt)),
+                                    commEdgeTgtCheck,
+                                    to_string(get_key(val, edgeSrcKeyTxt)));
+    };
       // check first target, if in then add edges (src->tgt and tgt->src) to
       // adjecency list at src
       //   we assume a
@@ -435,14 +577,23 @@ struct metall_graph {
     };
 
     edgelst.filter(std::move(efilt)).for_all_selected(edgeAction);
+    edgelst.filter(std::move(efilt)).for_all_selected(edgeAction);
 
+    comm().barrier();
+    static std::size_t localRoots = 0;
     comm().barrier();
     static std::size_t localRoots = 0;
 
     {
       // from Roger's code
       // https://lc.llnl.gov/gitlab/metall/ygm-reddit/-/blob/main/bench/reddit_components_labelprop.cpp
+    {
+      // from Roger's code
+      // https://lc.llnl.gov/gitlab/metall/ygm-reddit/-/blob/main/bench/reddit_components_labelprop.cpp
 
+      ygm::container::map<std::string, std::string> map_cc{comm()};
+      ygm::container::map<std::string, std::string> active{comm()};
+      ygm::container::map<std::string, std::string> next_active{comm()};
       ygm::container::map<std::string, std::string> map_cc{comm()};
       ygm::container::map<std::string, std::string> active{comm()};
       ygm::container::map<std::string, std::string> next_active{comm()};
@@ -461,6 +612,7 @@ struct metall_graph {
             active.async_insert(vertex, vertex);
           });
 
+      comm().barrier();
       comm().barrier();
 
       while (active.size() > 0) {
@@ -497,7 +649,18 @@ struct metall_graph {
         active.clear();
         active.swap(next_active);
       }
+                        cc_id);
+                  }
+                }
+              },
+              cc_id);
+        });
+        comm().barrier();
+        active.clear();
+        active.swap(next_active);
+      }
 
+      localRoots = 0;
       localRoots = 0;
 
       // \todo should be local_for_all??
@@ -509,9 +672,16 @@ struct metall_graph {
             //~ std::cerr << lhs << std::flush;
           });
     }
+            //~ if (lhs == rhs)
+            //~ std::cerr << lhs << std::flush;
+          });
+    }
 
     const std::size_t totalRoots = nodelst.comm().all_reduce_sum(localRoots);
+    const std::size_t totalRoots = nodelst.comm().all_reduce_sum(localRoots);
 
+    return totalRoots;
+  }
     return totalRoots;
   }
 
@@ -731,12 +901,19 @@ struct metall_graph {
 
     metall_json_lines::check_state(
         manager, comm, {edge_location_suffix_v, node_location_suffix_v});
+    metall_json_lines::check_state(
+        manager, comm, {edge_location_suffix_v, node_location_suffix_v});
 
     auto &mgr = manager.get_local_manager();
 
     key_store_type &vec = checked_deref(
         mgr.find<key_store_type>(keys_location_suffix).first, ERR_OPEN_KEYS);
 
+    if (vec.size() != 3) throw std::runtime_error{ERR_OPEN_KEYS};
+    //~ if (node_key.size())     check_equality(node_key, nodeKey());
+    //~ if (edge_src_key.size()) check_equality(edge_src_key, edgeSrcKey());
+    //~ if (edge_tgt_key.size()) check_equality(edge_tgt_key, edgeTgtKey());
+  }
     if (vec.size() != 3) throw std::runtime_error{ERR_OPEN_KEYS};
     //~ if (node_key.size())     check_equality(node_key, nodeKey());
     //~ if (edge_src_key.size()) check_equality(edge_src_key, edgeSrcKey());
@@ -761,6 +938,10 @@ struct metall_graph {
   static constexpr std::size_t NODE_KEY_IDX    = 0;
   static constexpr std::size_t EDGE_SRCKEY_IDX = NODE_KEY_IDX + 1;
   static constexpr std::size_t EDGE_TGTKEY_IDX = EDGE_SRCKEY_IDX + 1;
+  static constexpr std::size_t NODE_KEY_IDX    = 0;
+  static constexpr std::size_t EDGE_SRCKEY_IDX = NODE_KEY_IDX + 1;
+  static constexpr std::size_t EDGE_TGTKEY_IDX = EDGE_SRCKEY_IDX + 1;
 };
 
+}  // namespace experimental
 }  // namespace experimental
