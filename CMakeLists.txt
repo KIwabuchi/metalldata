@@ -70,8 +70,13 @@ find_package(MPI)
 #
 # Parquet
 #
+# Try to install Parquet on MetallData side, not YGM
+set(METALLDATA_REQUIRE_PARQUET OFF)
+set(METALLDATA_INSTALL_PARQUET ON)
+set(YGM_INSTALL_PARQUET OFF)
+set(YGM_REQUIRE_PARQUET OFF)
+
 include(FindArrowParquet)
-set(YGM_REQUIRE_ARROW_PARQUET OFF)
 find_or_install_arrow_parquet()
 
 #
